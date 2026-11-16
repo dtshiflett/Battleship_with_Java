@@ -29,16 +29,74 @@ public class Main {
         GameBoard player2 = new GameBoard();
         player2.playerName = "Player 2";
         Scanner scanner = new Scanner(System.in);
-
+        boolean allowAdjacentShips = false;
         try {
+            System.out.println("Enter q, exit, or quit at any prompt to exit.");
+            // allow user to decide if ships can be placed adjacent to each other
+            allowAdjacentShips = askUserForAdjacentShipsPlacement(scanner);
+
             // let each player specify their ship locations
-            inputPlayerShips(player1, scanner);
+            inputPlayerShips(player1, scanner, allowAdjacentShips);
             clearScreen(scanner);
-            inputPlayerShips(player2, scanner);
+            inputPlayerShips(player2, scanner, allowAdjacentShips);
             clearScreen(scanner);
             playGame(player1, player2, scanner);
+        } catch (ExitGameException e) {
+            System.out.println("Exiting game.");
         } catch (Exception e) {
             e.printStackTrace();
+        }
+    }
+
+    private static class ExitGameException extends RuntimeException {
+        ExitGameException(String message) {
+            super(message);
+        }
+    }
+    private static class InvalidCoordinatesException extends RuntimeException {
+        InvalidCoordinatesException(String message) {
+            super(message);
+        }
+    }
+
+    /**
+     * Reads the next line of input from the specified scanner and checks whether it is
+     * an exit command. If the trimmed input is q, exit, or quit, an ExitGameException
+     * is thrown; otherwise, the original untrimmed input is returned.
+     *
+     * @param scanner the scanner used to read the next line of input
+     * @return the original line of input read from the scanner
+     * @throws ExitGameException if the input is an exit command
+     */
+    private static String readInput(Scanner scanner) {
+        String input = scanner.nextLine();
+        String command = input.trim();
+        if (command.equalsIgnoreCase("q") || command.equalsIgnoreCase("exit")
+                || command.equalsIgnoreCase("quit")) {
+            throw new ExitGameException("User wants to exit the program.");
+        }
+        return input;
+    }
+
+    /**
+     * Prompts the user to choose whether adjacent ship placement is allowed.
+     * Continues reading input until the user enters yes or no, ignoring case.
+     *
+     * @param scanner the scanner used to read the user's response
+     * @return true if the user answers yes; false if the user answers no
+     * @throws ExitGameException if the input is an exit command
+     */
+    private static boolean askUserForAdjacentShipsPlacement(Scanner scanner) {
+        System.out.println("Do you want to allow adjacent ship placement? ");
+        while (true) {
+            String answer = readInput(scanner).trim();
+            if (answer.equalsIgnoreCase("yes")) {
+                return true;
+            }
+            if (answer.equalsIgnoreCase("no")) {
+                return false;
+            }
+            System.out.println("Please answer yes or no:");
         }
     }
 
@@ -80,11 +138,12 @@ public class Main {
      *
      * @param scanner the scanner used to read the shot coordinate input
      * @return a valid coordinate for the shot with an initial fog state
+     * @throws ExitGameException if the input is an exit command
      */
     private static Coordinate inputShot(Scanner scanner) {
         while (true) {
             try {
-                return new Coordinate(scanner.nextLine(), GameBoard.PositionState.FOG);
+                return new Coordinate(readInput(scanner), GameBoard.PositionState.FOG);
             } catch (IndexOutOfBoundsException e) {
                 System.out.println("Error! You entered an invalid coordinate!  Try again:");
             }
@@ -142,19 +201,18 @@ public class Main {
     }
 
     /**
-     * Prompts the specified player to place each ship on their game board.
-     * Displays the current board before placement begins and after each ship is
-     * successfully added. Ship coordinates are read from the provided scanner and
-     * validated by the ship coordinate input routine before being added to the board.
+     * Prompts the specified player to place each ship on the game board.
+     * Displays the board before placement begins and after each ship is added.
      *
      * @param board the game board for the player placing ships
      * @param scanner the scanner used to read ship coordinate input
+     * @param allowAdjacentShips whether adjacent ship placement is allowed
      */
-    protected static void inputPlayerShips(GameBoard board, Scanner scanner) {
+    protected static void inputPlayerShips(GameBoard board, Scanner scanner, boolean allowAdjacentShips) {
         System.out.println(board.playerName + ", place your ships on the game field");
         board.printGameBoard(false);
         for (Ship.ShipType shipType : Ship.ShipType.values()) {
-            Ship ship = inputShipCoordinates(scanner, board, shipType);
+            Ship ship = inputShipCoordinates(scanner, board, shipType, allowAdjacentShips);
             board.addShipToGameBoard(ship);
             board.printGameBoard(false);
         }
@@ -165,40 +223,47 @@ public class Main {
      * clear the console before the next player's turn.
      *
      * @param scanner the scanner used to wait for the user's Enter key input
+     * @throws ExitGameException if the input is an exit command
      */
     public static void clearScreen(Scanner scanner) {
         System.out.println("Press Enter and pass the turn to another player");
-        scanner.nextLine();
+        readInput(scanner);
         System.out.print("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n");
         System.out.flush();
     }
 
     /**
-     * Prompts for and reads the start and end coordinates of a ship of the specified type until
-     * valid coordinates are entered. Validates that exactly two coordinates are provided, that the
-     * resulting ship has the correct orientation and length, and that it is not adjacent to existing
-     * ships on the board.
+     * Prompts the user to enter the start and end coordinates for a ship of the specified type.
+     * Continues reading input until exactly two valid coordinates are provided and the resulting
+     * ship placement satisfies the board validation rules, including adjacent-ship restrictions
+     * when they are not allowed.
      *
-     * @param scanner the scanner used to read ship coordinate input
-     * @param board the game board used to validate ship placement against existing ships
+     * @param scanner the scanner used to read coordinate input from the user
+     * @param board the game board used to validate the ship placement
      * @param shipType the type of ship being placed
-     * @return a valid ship created from the entered coordinates
+     * @param allowAdjacentShips whether ships are allowed to be placed adjacent to one another
+     * @return a valid ship constructed from the entered coordinates
+     * @throws ExitGameException if the input is an exit command
+     * @throws InvalidCoordinatesException if the input coordinates are invalid
      */
-    protected static Ship inputShipCoordinates(Scanner scanner, GameBoard board, Ship.ShipType shipType) {
+    protected static Ship inputShipCoordinates(Scanner scanner, GameBoard board, Ship.ShipType shipType, boolean allowAdjacentShips) {
         System.out.println("Enter the coordinates of the " + shipType.name + " ("
                 + shipType.numCells + " cells): ");
         while (true) {
             try {
-                String[] coordinates = scanner.nextLine().split(" ");
+                String[] coordinates = readInput(scanner).split(" ");
                 if (coordinates.length != 2) {
-                    throw new IllegalArgumentException("Error! Exactly 2 coordinates expected.");
+                    throw new InvalidCoordinatesException("Error! Exactly 2 coordinates expected.");
                 }
                 // sorting for easier math
                 Arrays.sort(coordinates);
                 Coordinate start = new Coordinate(coordinates[0], GameBoard.PositionState.SHIP_CLEAR);
                 Coordinate end = new Coordinate(coordinates[1], GameBoard.PositionState.SHIP_CLEAR);
                 Ship ship = new Ship(start, end, shipType);
-                board.checkForAdjacentShips(ship);
+                // only check for adjacent ships if user doesn't allow them
+                if (!allowAdjacentShips) {
+                    board.checkForAdjacentShips(ship);
+                }
                 return ship;
             } catch (IllegalArgumentException | IndexOutOfBoundsException | RangeException | IllegalStateException e) {
                 System.out.println(e.getMessage() + "  Try again:");
@@ -259,7 +324,7 @@ public class Main {
          * coordinates as a clear ship position.
          *
          * @param ship the ship to place on the game board
-         * @throws IllegalStateException if any coordinate occupied by the ship is
+         * @throws InvalidCoordinatesException if any coordinate occupied by the ship is
          *         already occupied by another ship
          */
         public void addShipToGameBoard(Ship ship) {
@@ -267,7 +332,7 @@ public class Main {
             for (Coordinate position : ship.positions) {
                 // since this is the start of the game, all positions should be fog if not occupied by a ship
                 if (getCellState(position.xIndex, position.yIndex) != PositionState.FOG) {
-                    throw new IllegalStateException("Error! Space(s) already occupied by another ship");
+                    throw new InvalidCoordinatesException("Error! Space(s) already occupied by another ship");
                 }
                 setCellState(position.xIndex, position.yIndex, PositionState.SHIP_CLEAR);
             }
@@ -308,17 +373,16 @@ public class Main {
 
         /**
          * Checks whether the specified board coordinate is within bounds and occupied by
-         * a non-fog position. If the coordinate is valid and not fog, it is considered
-         * too close to another ship.
+         * a non-fog position. If the coordinate is valid and not fog, it overlaps another ship.
          *
          * @param x the row index of the neighboring cell to check
          * @param y the column index of the neighboring cell to check
-         * @throws IllegalStateException if the specified in-bounds coordinate contains a non-fog position
+         * @throws InvalidCoordinatesException if the specified in-bounds coordinate contains a non-fog position
          */
         private void checkNeighbor(int x, int y) {
             if (x >= 0 && x < boardSize && y >= 0 && y < boardSize
                     && board[x][y] != PositionState.FOG) {
-                throw new IllegalStateException("Error! You placed it too close to another ship");
+                throw new InvalidCoordinatesException("Error! Ships can't overlap.");
             }
         }
 
@@ -411,11 +475,11 @@ public class Main {
          *
          * @param x the zero-based horizontal board index to validate
          * @param y the zero-based vertical board index to validate
-         * @throws IndexOutOfBoundsException if either index is outside the board bounds
+         * @throws InvalidCoordinatesException if either index is outside the board bounds
          */
         private static void validateBounds(int x, int y) {
             if (x < 0 || x >= GameBoard.boardSize || y < 0 || y >= GameBoard.boardSize) {
-                throw new IndexOutOfBoundsException("Error! Coordinate is out of bounds");
+                throw new InvalidCoordinatesException("Error! Coordinate is out of bounds");
             }
         }
 
@@ -494,7 +558,7 @@ public class Main {
          * @param start the first boundary coordinate of the ship
          * @param end the second boundary coordinate of the ship
          * @param shipType the type of ship to create
-         * @throws RangeException if the boundary coordinates are not aligned horizontally
+         * @throws InvalidCoordinatesException if the boundary coordinates are not aligned horizontally
          *         or vertically, or if their distance does not match the ship type length
          */
         public Ship(Coordinate start, Coordinate end, ShipType shipType) {
@@ -503,13 +567,11 @@ public class Main {
             int distance = Coordinate.calculateDistance(start, end);
             if (distance == -1) {
                 // coordinates are not aligned
-                throw new RangeException(RangeException.BAD_BOUNDARYPOINTS_ERR,
-                        "Error! Wrong ship location!");
+                throw new InvalidCoordinatesException("Error! Wrong ship location!");
             }
             if (distance != shipType.numCells) {
                 // distance does not match the ship type length
-                throw new RangeException(RangeException.BAD_BOUNDARYPOINTS_ERR,
-                        "Error! Wrong length of the " + shipType.name + "!");
+                throw new InvalidCoordinatesException("Error! Wrong length of the " + shipType.name + "!");
             }
 
             positions = new Coordinate[distance];
